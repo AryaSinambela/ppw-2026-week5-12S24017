@@ -10,8 +10,10 @@ class BukuSeeder extends Seeder
     /**
      * Run the database seeds.
      */
-    public function run(): void
-    {
-        //
-    }
+public function run(): void
+{
+    \App\Models\Buku::factory(20)
+        ->recycle(\App\Models\Kategori::all())
+        ->create();
+}
 }
