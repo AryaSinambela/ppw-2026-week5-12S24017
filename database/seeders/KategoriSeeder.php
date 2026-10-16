@@ -2,29 +2,27 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\Kategori;
 use Illuminate\Database\Seeder;
 
 class KategoriSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
-public function run(): void
-{
-    $data = [
-        ['INF', 'Informatika & Komputer'],
-        ['SIS', 'Sistem Informasi'],
-        ['MAT', 'Matematika & Statistika'],
-        ['MNJ', 'Manajemen & Bisnis'],
-        ['UMM', 'Referensi Umum'],
-    ];
+    public function run(): void
+    {
+        $data = [
+            'INF' => 'Informatika & Pemrograman',
+            'SIS' => 'Sistem Informasi',
+            'MAT' => 'Matematika & Statistika',
+            'ELK' => 'Teknik Elektro',
+            'MNJ' => 'Manajemen & Bisnis',
+            'UMM' => 'Umum & Referensi',
+        ];
 
-    foreach ($data as [$kode, $nama]) {
-        \App\Models\Kategori::updateOrCreate(
-            ['kode_kategori' => $kode],
-            ['nama_kategori' => $nama]
-        );
+        foreach ($data as $kode => $nama) {
+            Kategori::updateOrCreate(
+                ['kode_kategori' => $kode],
+                ['nama_kategori' => $nama]
+            );
+        }
     }
-}
 }

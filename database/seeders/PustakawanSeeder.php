@@ -4,15 +4,15 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 
 class PustakawanSeeder extends Seeder
 {
     public function run(): void
     {
+        // Password di-hash otomatis oleh cast 'hashed' pada model User (Laravel 11)
         User::updateOrCreate(
             ['email' => 'pustakawan@del.ac.id'],
-            ['name' => 'Pustakawan Del', 'password' => Hash::make('password123')]
+            ['name' => 'Pustakawan Del', 'password' => 'password123']
         );
     }
 }

@@ -1,34 +1,45 @@
 <x-layout title="Login Pustakawan">
-    <div class="row justify-content-center">
+    <div class="row justify-content-center py-4">
         <div class="col-md-6 col-lg-5">
-            <div class="card card-modern">
-                <div class="card-body p-4 p-lg-5">
+            <div class="card">
+                <div class="card-body p-4 p-md-5">
                     <div class="text-center mb-4">
-                        <i class="bi bi-person-badge-fill text-del" style="font-size:2.5rem"></i>
-                        <h1 class="h4 hero-title mt-2 mb-1">Login Pustakawan</h1>
-                        <p class="text-muted small mb-0">Masuk untuk mengelola buku dan peminjaman.</p>
+                        <div class="brand-mark mx-auto mb-3" style="width:56px;height:56px;font-size:1.6rem;border-radius:16px;">
+                            <i class="bi bi-shield-lock"></i>
+                        </div>
+                        <h4 class="page-title mb-1">Login Pustakawan</h4>
+                        <p class="text-muted small mb-0">Masuk untuk mengelola buku dan sirkulasi</p>
                     </div>
 
-                    <form action="{{ route('login.attempt') }}" method="POST">
+                    <form action="{{ route('login.attempt') }}" method="POST" novalidate>
                         @csrf
                         <div class="mb-3">
-                            <label class="form-label fw-semibold">Email</label>
-                            <input type="email" name="email" autofocus
+                            <label class="form-label fw-semibold" for="email">Email</label>
+                            <input type="email" id="email" name="email"
+                                   class="form-control @error('email') is-invalid @enderror"
                                    value="{{ old('email', request()->cookie('del_last_user_email')) }}"
-                                   class="form-control @error('email') is-invalid @enderror">
-                            @error('email')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                   placeholder="pustakawan@del.ac.id" required autofocus>
+                            @error('email') <div class="invalid-feedback">{{ $message }}</div> @enderror
                         </div>
                         <div class="mb-3">
-                            <label class="form-label fw-semibold">Password</label>
-                            <input type="password" name="password" class="form-control @error('password') is-invalid @enderror">
-                            @error('password')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            <label class="form-label fw-semibold" for="password">Password</label>
+                            <input type="password" id="password" name="password"
+                                   class="form-control @error('password') is-invalid @enderror" required>
+                            @error('password') <div class="invalid-feedback">{{ $message }}</div> @enderror
                         </div>
                         <div class="form-check mb-4">
-                            <input type="checkbox" name="remember" id="remember" class="form-check-input">
-                            <label for="remember" class="form-check-label">Ingat saya</label>
+                            <input class="form-check-input" type="checkbox" name="remember" id="remember" value="1">
+                            <label class="form-check-label small" for="remember">Ingat saya</label>
                         </div>
-                        <button class="btn btn-del w-100 py-2"><i class="bi bi-box-arrow-in-right me-1"></i>Masuk</button>
+                        <button class="btn btn-del w-100 py-2 fw-semibold">
+                            <i class="bi bi-box-arrow-in-right me-1"></i> Masuk
+                        </button>
                     </form>
+
+                    <div class="mt-4 p-3 rounded-3 small" style="background: var(--del-purple-soft);">
+                        <div class="fw-semibold mb-1"><i class="bi bi-info-circle me-1"></i> Akun uji</div>
+                        <code>pustakawan@del.ac.id</code> / <code>password123</code>
+                    </div>
                 </div>
             </div>
         </div>

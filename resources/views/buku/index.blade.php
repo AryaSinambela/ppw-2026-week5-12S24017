@@ -1,210 +1,151 @@
-<x-layout title="Daftar Buku" :wide="true">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+<x-layout title="Katalog Buku">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div>
-            <h1 class="h3 hero-title mb-1">
-                <i class="bi bi-journal-bookmark-fill me-2 text-del"></i>Koleksi Buku
-            </h1>
-            <p class="text-muted mb-0">Kelola katalog perpustakaan kampus Del.</p>
+            <h3 class="page-title mb-0">Dashboard &amp; Katalog Buku</h3>
+            <div class="text-muted small">Rekapitulasi perpustakaan kampus Del</div>
         </div>
-        <div class="d-flex gap-2 align-items-center flex-wrap">
-            <div class="search-box">
-                <i class="bi bi-search"></i>
-                <input id="cariBuku" type="search" class="form-control" placeholder="Cari judul, penulis, ISBN...">
+        @auth
+            <a href="{{ route('buku.create') }}" class="btn btn-del"><i class="bi bi-plus-lg me-1"></i> Tambah Buku</a>
+        @endauth
+    </div>
+
+    {{-- Statistik (DB::table) --}}
+    @php
+        $cards = [
+            ['Total Judul Buku',    $stats['total_judul'],  'bi-journal-bookmark'],
+            ['Total Stok Tersedia', $stats['total_stok'],   'bi-box-seam'],
+            ['Sedang Dipinjam',     $stats['dipinjam'],     'bi-person-lines-fill'],
+            ['Total Dikembalikan',  $stats['dikembalikan'], 'bi-check2-circle'],
+        ];
+    @endphp
+    <div class="row g-3 mb-4">
+        @foreach ($cards as $card)
+            <div class="col-6 col-lg-3">
+                <div class="card stat-card h-100">
+                    <div class="card-body d-flex align-items-center gap-3">
+                        <div class="icon"><i class="bi {{ $card[2] }}"></i></div>
+                        <div>
+                            <div class="value">{{ number_format($card[1]) }}</div>
+                            <div class="small text-muted">{{ $card[0] }}</div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <a href="{{ route('buku.create') }}" class="btn btn-del">
-                <i class="bi bi-plus-lg me-1"></i>Tambah Buku
-            </a>
+        @endforeach
+    </div>
+
+    {{-- Filter dinamis --}}
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ route('buku.index') }}" class="row g-2 align-items-end">
+                <div class="col-md-6">
+                    <label class="form-label small fw-semibold mb-1">Cari judul / penulis / ISBN</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                        <input type="text" name="q" value="{{ request('q') }}" class="form-control" placeholder="mis. Clean Code">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-semibold mb-1">Kategori</label>
+                    <select name="kategori" class="form-select">
+                        <option value="">Semua kategori</option>
+                        @foreach ($kategoris as $kat)
+                            <option value="{{ $kat->id }}" @selected(request('kategori') == $kat->id)>{{ $kat->nama_kategori }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button class="btn btn-del flex-fill"><i class="bi bi-funnel me-1"></i> Terapkan</button>
+                    <a href="{{ route('buku.index') }}" class="btn btn-outline-secondary">Reset</a>
+                </div>
+            </form>
+
+            @if (session('last_search') && ! request('q'))
+                <div class="mt-3 small text-muted">
+                    <i class="bi bi-clock-history me-1"></i> Pencarian terakhir:
+                    <a href="{{ route('buku.index', ['q' => session('last_search')]) }}"
+                       class="badge rounded-pill text-decoration-none"
+                       style="background: var(--del-purple-soft); color: var(--del-purple);">
+                        {{ session('last_search') }}
+                    </a>
+                </div>
+            @endif
         </div>
     </div>
 
-    <div class="card card-modern overflow-hidden">
+    {{-- Tabel katalog --}}
+    <div class="card">
         <div class="table-responsive">
-            <table class="table table-books align-middle mb-0" id="tabelBuku">
+            <table class="table table-hover align-middle mb-0">
                 <thead>
-                    <tr>
-                        <th class="ps-4 col-no">
-                            <div class="no-cell">
-                                <input type="checkbox" id="checkAll" class="form-check-input" aria-label="Pilih semua">
-                                <span>No</span>
-                            </div>
-                        </th>
-                        <th>ISBN</th>
-                        <th>Judul &amp; Penulis</th>
-                        <th>Kategori</th>
-                        <th>Tahun</th>
-                        <th>Stok</th>
-                        <th class="text-end pe-4">Aksi</th>
-                    </tr>
+                <tr>
+                    <th class="ps-4">Buku</th>
+                    <th>Kategori</th>
+                    <th class="text-center">Tahun</th>
+                    <th class="text-center">Stok</th>
+                    <th class="text-center">Dipinjam (total)</th>
+                    <th class="text-end pe-4">Aksi</th>
+                </tr>
                 </thead>
                 <tbody>
-                    @forelse($bukus as $buku)
-                        <tr data-id="{{ $buku->id }}" data-stok="{{ $buku->stok }}"
-                            style="animation-delay: {{ $loop->index * 40 }}ms">
-                            <td class="ps-4 col-no">
-                                <div class="no-cell">
-                                    <input type="checkbox" class="form-check-input row-check"
-                                           aria-label="Pilih {{ $buku->judul }}">
-                                    <span class="no-num">{{ $bukus->firstItem() + $loop->index }}</span>
-                                </div>
-                            </td>
-                            <td class="text-nowrap"><code class="isbn">{{ $buku->isbn }}</code></td>
-                            <td>
-                                <div class="fw-semibold">{{ $buku->judul }}</div>
-                                <div class="small text-muted">{{ $buku->penulis }} · {{ $buku->penerbit }}</div>
-                            </td>
-                            <td><span class="badge badge-del text-nowrap">{{ $buku->kategori->nama_kategori }}</span></td>
-                            <td>{{ $buku->tahun_terbit }}</td>
-                            <td class="text-nowrap">
-                                @if($buku->stok == 0)
-                                    <span class="stok stok-habis">Habis</span>
-                                @elseif($buku->stok <= 5)
-                                    <span class="stok stok-tipis">{{ $buku->stok }} · Menipis</span>
-                                @else
-                                    <span class="stok stok-ok">{{ $buku->stok }} · Tersedia</span>
-                                @endif
-                            </td>
-                            <td class="text-end pe-4 text-nowrap">
-                                <div class="aksi">
-                                    <a href="{{ route('buku.show', $buku) }}" class="btn btn-sm btn-outline-del" title="Detail"><i class="bi bi-eye"></i></a>
-                                    <a href="{{ route('buku.edit', $buku) }}" class="btn btn-sm btn-outline-del" title="Edit"><i class="bi bi-pencil"></i></a>
-                                    <form action="{{ route('buku.destroy', $buku) }}" method="POST"
-                                          onsubmit="return confirm('Hapus buku ini?')">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button class="btn btn-sm btn-outline-danger" title="Hapus"><i class="bi bi-trash"></i></button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="7" class="text-center py-5 text-muted">
-                                <i class="bi bi-inbox fs-1 d-block mb-2"></i>Belum ada data buku.
-                            </td>
-                        </tr>
-                    @endforelse
+                @forelse ($bukus as $buku)
+                    <tr>
+                        <td class="ps-4">
+                            <div class="fw-semibold">{{ $buku->judul }}</div>
+                            <div class="small text-muted">{{ $buku->penulis }} &middot; {{ $buku->penerbit }}</div>
+                            <div class="small text-muted"><i class="bi bi-upc me-1"></i>{{ $buku->isbn }}</div>
+                        </td>
+                        <td>
+                            <span class="badge rounded-pill" style="background: var(--del-purple-soft); color: var(--del-purple);">
+                                {{ $buku->kategori->nama_kategori }}
+                            </span>
+                        </td>
+                        <td class="text-center">{{ $buku->tahun_terbit }}</td>
+                        <td class="text-center">
+                            @if ($buku->stok === 0)
+                                <span class="badge text-bg-danger">Habis</span>
+                            @elseif ($buku->stok <= 2)
+                                <span class="badge text-bg-warning">{{ $buku->stok }}</span>
+                            @else
+                                <span class="badge text-bg-success">{{ $buku->stok }}</span>
+                            @endif
+                        </td>
+                        <td class="text-center">{{ $buku->peminjamans_count }}x</td>
+                        <td class="text-end pe-4 text-nowrap">
+                            @auth
+                                <a href="{{ route('peminjaman.create', ['buku_id' => $buku->id]) }}"
+                                   class="btn btn-sm btn-del" title="Pinjamkan"><i class="bi bi-box-arrow-up-right"></i></a>
+                                <a href="{{ route('buku.edit', $buku) }}"
+                                   class="btn btn-sm btn-outline-del" title="Edit"><i class="bi bi-pencil"></i></a>
+                                <form action="{{ route('buku.destroy', $buku) }}" method="POST" class="d-inline"
+                                      onsubmit="return confirm('Hapus buku ini?')">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button class="btn btn-sm btn-outline-danger" title="Hapus"><i class="bi bi-trash"></i></button>
+                                </form>
+                            @else
+                                <a href="{{ route('login') }}" class="small text-muted text-decoration-none">Login untuk kelola</a>
+                            @endauth
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-muted">
+                            <i class="bi bi-journal-x fs-1 d-block mb-2"></i>
+                            Tidak ada buku yang cocok dengan pencarian Anda.
+                        </td>
+                    </tr>
+                @endforelse
                 </tbody>
             </table>
         </div>
-        <div id="noResult" class="text-center text-muted py-4 d-none">
-            <i class="bi bi-search me-1"></i>Tidak ada buku yang cocok di halaman ini.
-        </div>
-    </div>
-
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-4">
-        <small class="text-muted">
-            Menampilkan buku nomor <strong>{{ $bukus->firstItem() ?? 0 }}</strong>
-            sampai <strong>{{ $bukus->lastItem() ?? 0 }}</strong>
-            dari <strong>{{ $bukus->total() }}</strong> buku
-        </small>
-        <div class="pager-wrap">{{ $bukus->links('pagination::bootstrap-5') }}</div>
-    </div>
-
-    {{-- Bar yang muncul saat ada buku dipilih --}}
-    <div id="selectionBar" class="selection-bar">
-        <div class="d-flex align-items-center gap-3">
-            <span class="count-pill" id="selCount">0</span>
-            <div>
-                <div class="label">buku dipilih</div>
-                <div class="sublabel" id="selStok">Total stok: 0</div>
+        @if ($bukus->hasPages())
+            <div class="card-footer bg-white border-0 py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="small text-muted">
+                    Menampilkan {{ $bukus->firstItem() }}&ndash;{{ $bukus->lastItem() }} dari {{ $bukus->total() }} buku
+                </div>
+                {{ $bukus->links() }}
             </div>
-        </div>
-        <button type="button" id="clearSel" class="btn-bar">
-            <i class="bi bi-x-lg me-1"></i>Batal pilih
-        </button>
+        @endif
     </div>
-
-    <style>
-        .col-no { width: 96px; white-space: nowrap; }
-        .no-cell { display: flex; align-items: center; gap: .75rem; }
-        .no-num { min-width: 1.5rem; font-weight: 600; color: #6b6485; }
-        .table-books tbody tr.is-selected .no-num { color: #4C1D95; }
-        .aksi { display: inline-flex; align-items: center; gap: .35rem; }
-        .aksi form { margin: 0; }
-        /* sembunyikan teks "Showing x to y of z results" bawaan Laravel (sudah ada versi Indonesia) */
-        .pager-wrap nav .d-sm-flex > div:first-child { display: none; }
-        .pager-wrap nav .d-sm-flex { justify-content: flex-end !important; }
-        .pager-wrap .pagination { margin-bottom: 0; }
-    </style>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const rows     = [...document.querySelectorAll('#tabelBuku tbody tr[data-id]')];
-            const checkAll = document.getElementById('checkAll');
-            const bar      = document.getElementById('selectionBar');
-            const selCount = document.getElementById('selCount');
-            const selStok  = document.getElementById('selStok');
-            const noResult = document.getElementById('noResult');
-            const cari     = document.getElementById('cariBuku');
-
-            const isSelected = r => r.classList.contains('is-selected');
-            const isVisible  = r => !r.classList.contains('d-none');
-
-            let lastCount = 0, lastStok = 0;
-
-            function tween(el, from, to, fmt) {
-                const start = performance.now(), dur = 350;
-                (function step(now) {
-                    const p = Math.min((now - start) / dur, 1);
-                    el.textContent = fmt(Math.round(from + (to - from) * (1 - Math.pow(1 - p, 3))));
-                    if (p < 1) requestAnimationFrame(step);
-                })(start);
-            }
-
-            function setRow(row, on) {
-                row.classList.toggle('is-selected', on);
-                row.querySelector('.row-check').checked = on;
-            }
-
-            function update() {
-                const selected = rows.filter(isSelected);
-                const visible  = rows.filter(isVisible);
-                const count = selected.length;
-                const stok  = selected.reduce((s, r) => s + Number(r.dataset.stok), 0);
-
-                if (count !== lastCount) {
-                    selCount.textContent = count;
-                    selCount.classList.remove('bump');
-                    void selCount.offsetWidth;
-                    selCount.classList.add('bump');
-                }
-                if (stok !== lastStok) tween(selStok, lastStok, stok, v => 'Total stok: ' + v);
-                lastCount = count; lastStok = stok;
-
-                bar.classList.toggle('show', count > 0);
-                checkAll.checked       = visible.length > 0 && visible.every(isSelected);
-                checkAll.indeterminate = count > 0 && !checkAll.checked;
-            }
-
-            rows.forEach(row => {
-                row.addEventListener('click', e => {
-                    if (e.target.closest('a, button, form')) return;
-                    if (e.target.classList.contains('row-check')) setRow(row, e.target.checked);
-                    else setRow(row, !isSelected(row));
-                    update();
-                });
-            });
-
-            checkAll.addEventListener('change', () => {
-                rows.filter(isVisible).forEach(r => setRow(r, checkAll.checked));
-                update();
-            });
-
-            document.getElementById('clearSel').addEventListener('click', () => {
-                rows.forEach(r => setRow(r, false));
-                update();
-            });
-
-            document.addEventListener('keydown', e => {
-                if (e.key === 'Escape') { rows.forEach(r => setRow(r, false)); update(); }
-            });
-
-            cari.addEventListener('input', () => {
-                const q = cari.value.trim().toLowerCase();
-                rows.forEach(r => r.classList.toggle('d-none', q !== '' && !r.textContent.toLowerCase().includes(q)));
-                noResult.classList.toggle('d-none', rows.some(isVisible) || rows.length === 0);
-                update();
-            });
-        });
-    </script>
 </x-layout>

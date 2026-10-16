@@ -10,12 +10,13 @@ use Illuminate\Database\Eloquent\Factories\Factory;
  */
 class KategoriFactory extends Factory
 {
-    public function definition(): array
-{
-    return [
-        'kode_kategori' => strtoupper(fake()->unique()->lexify('???')),
-        'nama_kategori' => fake()->unique()->words(2, true),
-    ];
-}
+    protected $model = Kategori::class;
 
+    public function definition(): array
+    {
+        return [
+            'kode_kategori' => strtoupper(fake()->unique()->lexify('???')),
+            'nama_kategori' => ucfirst(fake()->words(2, true)),
+        ];
+    }
 }

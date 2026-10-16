@@ -1,5 +1,8 @@
 # 📚 SIPUS-Del — Sistem Informasi Perpustakaan Kampus Del
 
+pustakawan@del.ac.id 
+password123
+
 **Tugas Mandiri Minggu 05** · 12S3101 Pemrograman & Pengujian Web · Institut Teknologi Del · Ganjil 2026/2027
 
 | | |

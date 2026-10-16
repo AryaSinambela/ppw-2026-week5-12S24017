@@ -4,100 +4,110 @@ namespace App\Http\Controllers;
 
 use App\Models\Buku;
 use App\Models\Peminjaman;
-use DomainException;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\View\View;
+use RuntimeException;
 
 class PeminjamanController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request): View
     {
-        $peminjamans = Peminjaman::with('buku')
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('search'), function ($q) use ($request) {
-                $s = $request->search;
-                $q->where(function ($w) use ($s) {
-                    $w->where('kode_pinjam', 'like', "%{$s}%")
-                      ->orWhere('nim_peminjam', 'like', "%{$s}%")
-                      ->orWhere('nama_peminjam', 'like', "%{$s}%");
+        $peminjamans = Peminjaman::with('buku') // eager load, bebas N+1
+            ->when($request->status, fn ($query, $status) => $query->where('status', $status))
+            ->when($request->q, function ($query, $keyword) {
+                $query->where(function ($w) use ($keyword) {
+                    $w->where('kode_pinjam', 'like', "%{$keyword}%")
+                      ->orWhere('nim_peminjam', 'like', "%{$keyword}%")
+                      ->orWhere('nama_peminjam', 'like', "%{$keyword}%");
                 });
             })
-            ->orderByDesc('id')
+            ->latest('id')
             ->paginate(10)
             ->withQueryString();
 
         return view('peminjaman.index', compact('peminjamans'));
     }
 
-    public function pinjam(Request $request, int $id)
+    public function create(Request $request): View
     {
-        $data = $request->validate([
+        return view('peminjaman.create', [
+            'bukus'    => Buku::orderBy('judul')->get(['id', 'judul', 'isbn', 'stok']),
+            'selected' => $request->integer('buku_id'),
+        ]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'buku_id'       => 'required|integer|exists:bukus,id',
             'nim_peminjam'  => 'required|string|min:6|max:15',
             'nama_peminjam' => 'required|string|min:3|max:150',
-            'durasi_hari'   => 'required|integer|min:1|max:30',
+            'lama_pinjam'   => 'required|integer|min:1|max:30',
         ]);
 
         try {
-            $peminjaman = DB::transaction(function () use ($data, $id) {
-                // 1. Kunci baris buku: request lain untuk buku yang sama harus menunggu di sini
-                $buku = Buku::where('id', $id)->lockForUpdate()->firstOrFail();
+            $peminjaman = DB::transaction(function () use ($validated) {
+                // Pessimistic locking: transaksi lain mengantre sampai commit/rollback
+                $buku = Buku::where('id', $validated['buku_id'])->lockForUpdate()->firstOrFail();
 
-                // 2. Cek stok (setelah dikunci, nilainya pasti yang terbaru)
                 if ($buku->stok < 1) {
-                    throw new DomainException("Stok buku \"{$buku->judul}\" habis, peminjaman ditolak.");
+                    throw new RuntimeException("Stok buku \"{$buku->judul}\" habis (0). Peminjaman ditolak.");
                 }
 
-                // 3. NIM yang sama tidak boleh meminjam buku yang sama sebelum mengembalikan
-                $nim = strtoupper(trim($data['nim_peminjam']));
-                $masihPinjam = Peminjaman::where('buku_id', $buku->id)
+                $nim = strtoupper(trim($validated['nim_peminjam']));
+
+                $masihDipinjam = Peminjaman::where('buku_id', $buku->id)
                     ->where('nim_peminjam', $nim)
                     ->where('status', 'dipinjam')
                     ->exists();
 
-                if ($masihPinjam) {
-                    throw new DomainException("NIM {$nim} masih meminjam buku ini dan belum mengembalikannya.");
+                if ($masihDipinjam) {
+                    throw new RuntimeException("NIM {$nim} masih meminjam buku ini dan belum mengembalikannya.");
                 }
 
-                // 4. Mutasi atomik: stok turun + transaksi tercatat, atau dua-duanya batal
                 $buku->decrement('stok');
 
                 return Peminjaman::create([
-                    'kode_pinjam'         => 'PJM-' . now()->format('Ymd') . '-' . strtoupper(Str::random(5)),
+                    'kode_pinjam'         => 'PJM-' . now()->format('ymd') . '-' . strtoupper(Str::random(5)),
                     'buku_id'             => $buku->id,
                     'nim_peminjam'        => $nim,
-                    'nama_peminjam'       => trim($data['nama_peminjam']),
+                    'nama_peminjam'       => $validated['nama_peminjam'],
                     'tanggal_pinjam'      => now()->toDateString(),
-                    'tanggal_jatuh_tempo' => now()->addDays((int) $data['durasi_hari'])->toDateString(),
+                    'tanggal_jatuh_tempo' => now()->addDays((int) $validated['lama_pinjam'])->toDateString(),
                     'status'              => 'dipinjam',
                 ]);
-            }, 3); // 3x percobaan ulang jika terjadi deadlock
+            }, 3);
 
-            // state sesi: peminjam terakhir dipakai untuk mengisi otomatis form berikutnya
-            session(['last_peminjam' => [
-                'nim'  => $peminjaman->nim_peminjam,
-                'nama' => $peminjaman->nama_peminjam,
-            ]]);
+            // Session state: peminjam terakhir
+            session(['last_borrower' => $peminjaman->nama_peminjam . ' (' . $peminjaman->nim_peminjam . ')']);
 
-            return back()->with('success', "Peminjaman {$peminjaman->kode_pinjam} berhasil dicatat.");
-        } catch (DomainException $e) {
+            return redirect()->route('peminjaman.index')
+                ->with('success', "Peminjaman {$peminjaman->kode_pinjam} berhasil dicatat secara atomik.");
+        } catch (RuntimeException $e) {
+            Log::error('[SIRKULASI][PINJAM] ' . $e->getMessage());
+
             return back()->withInput()->with('error', $e->getMessage());
         } catch (QueryException $e) {
-            Log::error('[DB EXCEPTION] pinjam: ' . $e->getMessage());
-            return back()->withInput()->with('error', 'Terjadi kesalahan database, transaksi dibatalkan.');
+            Log::error('[DB EXCEPTION][PINJAM] ' . $e->getMessage());
+
+            return back()->withInput()
+                ->with('error', 'Terjadi kesalahan basis data. Transaksi dibatalkan (rollback).');
         }
     }
 
-    public function kembali(int $id)
+    public function kembali(int $id): RedirectResponse
     {
         try {
             $peminjaman = DB::transaction(function () use ($id) {
                 $pinjam = Peminjaman::where('id', $id)->lockForUpdate()->firstOrFail();
 
                 if ($pinjam->status === 'dikembalikan') {
-                    throw new DomainException('Buku ini sudah dikembalikan sebelumnya.');
+                    throw new RuntimeException("Transaksi {$pinjam->kode_pinjam} sudah dikembalikan sebelumnya.");
                 }
 
                 $buku = Buku::where('id', $pinjam->buku_id)->lockForUpdate()->firstOrFail();
@@ -111,12 +121,15 @@ class PeminjamanController extends Controller
                 return $pinjam;
             }, 3);
 
-            return back()->with('success', "Pengembalian {$peminjaman->kode_pinjam} berhasil, stok buku bertambah.");
-        } catch (DomainException $e) {
+            return back()->with('success', "Buku pada transaksi {$peminjaman->kode_pinjam} berhasil dikembalikan.");
+        } catch (RuntimeException $e) {
+            Log::error('[SIRKULASI][KEMBALI] ' . $e->getMessage());
+
             return back()->with('error', $e->getMessage());
         } catch (QueryException $e) {
-            Log::error('[DB EXCEPTION] kembali: ' . $e->getMessage());
-            return back()->with('error', 'Terjadi kesalahan database, pengembalian dibatalkan.');
+            Log::error('[DB EXCEPTION][KEMBALI] ' . $e->getMessage());
+
+            return back()->with('error', 'Terjadi kesalahan basis data. Pengembalian dibatalkan (rollback).');
         }
     }
 }

@@ -6,31 +6,22 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('peminjamans', function (Blueprint $table) {
             $table->id();
-            $table->string('kode_pinjam', 20)->unique();
+            $table->string('kode_pinjam', 25)->unique();
             $table->foreignId('buku_id')->constrained('bukus')->cascadeOnDelete();
-            $table->string('nim_peminjam', 15);
+            $table->string('nim_peminjam', 15)->index();
             $table->string('nama_peminjam', 150);
             $table->date('tanggal_pinjam');
             $table->date('tanggal_jatuh_tempo');
             $table->date('tanggal_kembali')->nullable();
-            $table->string('status', 15)->default('dipinjam'); // dipinjam | dikembalikan
+            $table->enum('status', ['dipinjam', 'dikembalikan'])->default('dipinjam');
             $table->timestamps();
-
-            // mempercepat pengecekan "NIM ini masih meminjam buku ini?"
-            $table->index(['nim_peminjam', 'buku_id', 'status']);
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('peminjamans');
