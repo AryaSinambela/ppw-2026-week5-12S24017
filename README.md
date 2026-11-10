@@ -1,161 +1,70 @@
-# 📚 SIPUS-Del — Sistem Informasi Perpustakaan Kampus Del
+# SIPUS-Del Tahap 3: Arsitektur Web Services (SOAP Legacy & RESTful API v1)
 
-pustakawan@del.ac.id 
-password123
+## 1. Identitas Mahasiswa
+* **Nama Lengkap**: Arya Pratama Sinambela
+* **NIM**: 12S24017
+* **Program Studi**: S1 Sistem Informasi — Fakultas Informatika dan Teknik Elektro, Institut Teknologi Del
+* **Mata Kuliah**: Pemrograman dan Pengujian Aplikasi Web (12S3101) — Minggu 9
+* **Dosen Pengampu**: Chandro Pardede, S.Kom., M.Sc.
+* **Branch**: `week9-rest-api` (Melanjutkan `week6-db-session`)
 
-**Tugas Mandiri Minggu 05** · 12S3101 Pemrograman & Pengujian Web · Institut Teknologi Del · Ganjil 2026/2027
+---
 
-| | |
-|---|---|
-| **Nama** | Arya Pratama Sinambela |
-| **NIM** | 12S24017 |
-| **Dosen** | Chandro Pardede, S.Kom., M.Sc. |
-| **Stack** | Laravel, PHP 8.2+, MySQL 8.0, Bootstrap 5 (CDN), Blade |
+## 2. Analisis Kebutuhan & Kelayakan (Feasibility) Web Services pada SIPUS-Del
 
-Aplikasi CRUD katalog buku dan kategori dengan arsitektur **Model-View-Controller (MVC)** *server-side rendering*, bertema **Del Purple (#4C1D95)**.
+### A. Pemetaan Peran Arsitektur Layanan (Service Provider vs Service Consumer)
 
-## ✨ Fitur
+| Komponen Integrasi | Peran SIPUS-Del | Mitra / Eksternal | Protokol & Format | Rasionalisasi Bisnis & Teknis |
+| :--- | :--- | :--- | :--- | :--- |
+| **Layanan Cek Bebas Pustaka Yudisium** | **Service Provider** | Sistem Administrasi Yudisium Kampus (Legacy) | SOAP 1.1 (`text/xml` + WSDL) | Sistem Yudisium lama membutuhkan kontrak WSDL formal dan amplop `<soap:Envelope>` untuk mengecek tanggungan pinjaman buku (`active_loans` & `is_cleared`). |
+| **Layanan Katalog & Sirkulasi Mobile/Kiosk** | **Service Provider** | Aplikasi Mobile Mahasiswa & Kiosk Mandiri Perpustakaan | RESTful API v1 (`application/json`) | Aplikasi mobile dan kiosk membutuhkan pertukaran data ringan, *stateless* (Sanctum Bearer Token), mendukung paginasi, HATEOAS, serta jaminan transaksi ACID (`lockForUpdate`). |
+| **Pengayaan Metadata Buku ISBN** | **Service Consumer** | OpenLibrary REST API (`openlibrary.org`) | REST via Laravel `Http` Facade (JSON) | Informasi jumlah halaman, sampul buku, dan tautan pratinjau dikelola oleh repositori buku global; mengonsumsi API eksternal menghemat beban penyimpanan lokal. |
+| **Portofolio Koding Mahasiswa** | **Service Consumer** | GitHub REST API v3 (`api.github.com`) | REST via Laravel `Http` Facade (JSON) | Mengambil profil dan repositori publik terbaru mahasiswa langsung dari otoritas data GitHub. |
 
-- CRUD **Buku** dan **Kategori** lewat `Route::resource` (7 aksi) dengan *implicit route model binding*
-- Relasi Eloquent: `Kategori hasMany Buku` dan `Buku belongsTo Kategori`
-- **Eager loading** (`Buku::with('kategori')`) untuk mencegah N+1 query
-- Validasi server-side (`$request->validate()`) dan proteksi **CSRF** + method spoofing di semua form
-- Blade component `<x-layout>`, pagination Bootstrap 5, flash message, `@forelse` untuk data kosong
-- UI: latar rak buku, tabel dengan status stok (Tersedia / Menipis / Habis), baris yang bisa dipilih, pencarian cepat di halaman aktif
-- **Seeder & Factory**: 5 kategori dan 20 buku (judul, penulis, penerbit ditulis manual; ISBN dan stok dibuat Faker)
+### B. Alasan Pemilihan RESTful API Dibanding SOAP untuk Mobile & Kiosk Mandiri
+1. **Efisiensi Payload & Bandwidth**: Payload JSON pada REST API 5–8 kali lebih ringkas dibanding dokumen XML `<soap:Envelope>`, sehingga sangat responsif pada jaringan seluler mahasiswa.
+2. **Skalabilitas Statelessness**: Dengan autentikasi `Authorization: Bearer <token>` (Laravel Sanctum), server tidak menyimpan sesi klien di memori/disk sehingga siap diskalakan secara horizontal di belakang Load Balancer.
+3. **Semantik HTTP & HATEOAS (RMM Level 3)**: Klien Mobile/Kiosk dapat mengenali status operasi langsung dari HTTP Status Code (`200`, `201`, `204`, `401`, `404`, `409`, `422`) dan menavigasi aksi berikutnya secara dinamis melalui atribut `_links` (`pinjam_buku` & `kembalikan_buku`).
 
-> ISBN pada data seeder adalah **data contoh dari Faker**, bukan ISBN asli buku.
+---
 
-## 🗂️ Struktur MVC
+## 3. Tabel Katalog Endpoint Web Services (SOAP & REST API v1)
 
-| Lapisan | Lokasi | Tanggung jawab |
-|---|---|---|
-| Model | `app/Models/Buku.php`, `Kategori.php` | Struktur data, relasi, `$fillable` |
-| View | `resources/views/buku/*`, `kategori/*`, `components/layout.blade.php` | Tampilan (Blade), tanpa kueri SQL |
-| Controller | `app/Http/Controllers/BukuController.php`, `KategoriController.php` | Menerima request, validasi, memanggil Model, memilih View |
-| Route | `routes/web.php` | `Route::resource('buku')` dan `Route::resource('kategori')` |
+| Method | URI Endpoint | Proteksi Auth | Deskripsi Layanan | Kode Status Respons |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/soap/sipus.wsdl` | Publik | Menyajikan kontrak dokumen XML WSDL `SipusLibrarySoapService` | `200` |
+| `POST` | `/soap/sipus` | Publik | Operasi SOAP `CheckClearanceStatus` berdasarkan `<nim_peminjam>` | `200`, `500 (soap:Fault)` |
+| `POST` | `/api/v1/auth/login` | Publik | Login pustakawan & menerbitkan Sanctum Bearer Token | `200`, `401`, `422` |
+| `GET` | `/api/v1/auth/me` | `auth:sanctum` | Mengambil profil pemilik Bearer Token aktif | `200`, `401` |
+| `POST` | `/api/v1/auth/logout` | `auth:sanctum` | Mencabut (*revoke*) Bearer Token yang sedang aktif | `200`, `401` |
+| `GET` | `/api/v1/bukus` | Publik | Daftar buku terpaginasi (`?search=`, `?kategori_id=`, `?tersedia=1`, `?sort=`) bebas N+1 | `200` |
+| `GET` | `/api/v1/bukus/{id}` | Publik | Detail satu buku beserta kategori, riwayat pinjam, & HATEOAS `_links` | `200`, `404` |
+| `POST` | `/api/v1/bukus` | `auth:sanctum` | Menambahkan buku baru ke katalog perpustakaan | `201 (+Header Location)`, `401`, `422` |
+| `PUT` | `/api/v1/bukus/{id}` | `auth:sanctum` | Mengganti seluruh representasi data buku (*Full Replacement*) | `200`, `401`, `404`, `422` |
+| `PATCH` | `/api/v1/bukus/{id}` | `auth:sanctum` | Memperbarui sebagian atribut buku (*Partial Update*, misal `stok` saja) | `200`, `400`, `401`, `404`, `422` |
+| `DELETE` | `/api/v1/bukus/{id}` | `auth:sanctum` | Menghapus buku (ditolak `409 Conflict` jika masih ada pinjaman aktif) | `204`, `401`, `404`, `409` |
+| `GET` | `/api/v1/bukus/{id}/referensi-eksternal` | Publik | Mengambil metadata tambahan buku dari OpenLibrary API berdasarkan ISBN | `200`, `404`, `502`, `504` |
+| `GET` | `/api/v1/peminjamans` | `auth:sanctum` | Daftar transaksi sirkulasi peminjaman (`?status=dipinjam\|dikembalikan`, `?nim=`) | `200`, `401` |
+| `POST` | `/api/v1/peminjamans` | `auth:sanctum` | Mencatat peminjaman buku baru secara atomik (`DB::transaction` + `lockForUpdate`) | `201 (+Header Location)`, `404`, `409`, `422` |
+| `PATCH` | `/api/v1/peminjamans/{id}/kembalikan` | `auth:sanctum` | Mengembalikan buku secara atomik & menambah stok buku (`+1`) | `200`, `404`, `409` |
+| `GET` | `/api/v1/portfolios/github/{username}` | Publik | Orkestrasi konsumsi GitHub REST API untuk profil mahasiswa | `200`, `404`, `502` |
 
-## 🧩 Skema Database
+---
 
-```mermaid
-erDiagram
-    KATEGORIS ||--o{ BUKUS : "memiliki"
-    KATEGORIS {
-        bigint id PK
-        varchar kode_kategori UK
-        varchar nama_kategori
-        timestamp created_at
-        timestamp updated_at
-    }
-    BUKUS {
-        bigint id PK
-        varchar isbn UK
-        varchar judul "indexed"
-        varchar penulis
-        varchar penerbit
-        smallint tahun_terbit
-        bigint kategori_id FK
-        int stok
-        text sinopsis
-        timestamp created_at
-        timestamp updated_at
-    }
-```
-
-Foreign key `bukus.kategori_id` memakai `restrictOnDelete`, jadi kategori yang masih punya buku **tidak bisa dihapus** (aplikasi menampilkan pesan error, bukan menghapus buku diam-diam).
-
-## 🛣️ Route
-
-| Method | URI | Nama | Aksi |
-|---|---|---|---|
-| GET | `/buku` | `buku.index` | Daftar buku (eager loading + pagination) |
-| GET | `/buku/create` | `buku.create` | Form tambah |
-| POST | `/buku` | `buku.store` | Simpan (validasi) |
-| GET | `/buku/{buku}` | `buku.show` | Detail |
-| GET | `/buku/{buku}/edit` | `buku.edit` | Form edit |
-| PUT/PATCH | `/buku/{buku}` | `buku.update` | Perbarui (validasi) |
-| DELETE | `/buku/{buku}` | `buku.destroy` | Hapus |
-
-Route `kategori.*` mengikuti pola yang sama. Daftar lengkap: `php artisan route:list --except-vendor`.
-
-## 🔒 Validasi & Keamanan
-
-| Kolom | Aturan |
-|---|---|
-| `isbn` | wajib, 10-13 digit angka, **unik** |
-| `judul` | wajib, **minimal 5** karakter, maksimal 200 |
-| `penulis`, `penerbit` | wajib, maksimal 150 |
-| `tahun_terbit` | wajib, angka antara 1900 dan tahun berjalan |
-| `kategori_id` | wajib, harus ada di tabel `kategoris` |
-| `stok` | wajib, bilangan bulat **minimal 0** |
-| `sinopsis` | opsional |
-
-- Semua form memakai `@csrf`, dan `@method('PUT')` / `@method('DELETE')` untuk method spoofing.
-- Mass assignment dilindungi `$fillable` pada kedua model.
-- Output Blade memakai `{{ }}` sehingga di-*escape* otomatis (anti-XSS).
-
-## 🚀 Instalasi
-
-**Kebutuhan:** PHP 8.2+ (ekstensi `pdo_mysql`, `mbstring`, `openssl`), Composer 2.6+, MySQL 8.0.
+## 4. Panduan Instalasi & Pengujian Cepat
 
 ```bash
-git clone https://github.com/AryaSinambela/ppw-2026-week5-12S24017.git
+# 1. Clone repositori dan pindah ke branch week9-rest-api
+git clone -b week9-rest-api [https://github.com/AryaSinambela/ppw-2026-week5-12S24017.git](https://github.com/AryaSinambela/ppw-2026-week5-12S24017.git)
 cd ppw-2026-week5-12S24017
 
+# 2. Instal dependensi Composer & siapkan environment
 composer install
 cp .env.example .env
 php artisan key:generate
-```
 
-Buat database, lalu sesuaikan `DB_USERNAME` dan `DB_PASSWORD` di `.env` bila perlu:
-
-```bash
-mysql -u root -e "CREATE DATABASE sipus_del CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-```
-
-Jalankan migrasi dan seeder, lalu server:
-
-```bash
+# 3. Jalankan migrasi & database seeder
 php artisan migrate:fresh --seed
+
+# 4. Jalankan server pengembangan lokal
 php artisan serve
-```
-
-Buka **http://127.0.0.1:8000**.
-
-> `migrate:fresh` menghapus semua tabel sebelum membuat ulang. Gunakan hanya pada database latihan.
-
-**Alternatif tanpa Artisan:** impor dump yang sudah disertakan.
-
-```bash
-mysql -u root sipus_del < database/sipus_del.sql
-```
-
-## 🔍 Bukti Eager Loading (Audit SQL)
-
-`AppServiceProvider::boot()` memasang `DB::listen` yang mencatat query ke tabel `bukus` dan `kategoris` ke `storage/logs/laravel.log`. Log berikut dihasilkan saat membuka `/buku`:
-
-```
-(tempel 3 baris [SQL AUDIT] hasil `tail -n 20 storage/logs/laravel.log` di sini)
-```
-
-Halaman index menjalankan **3 query tetap**, berapa pun jumlah bukunya:
-
-1. [2026-10-12 01:38:42] local.INFO: [SQL AUDIT] (1.38 ms) select count(*) as `aggregate` from `bukus`
-2. [2026-10-12 01:38:42] local.INFO: [SQL AUDIT] (1.39 ms) select * from `bukus` order by `created_at` desc limit 10 offset 0
-3. [2026-10-12 01:38:42] local.INFO: [SQL AUDIT] (1.57 ms) select * from `kategoris` where `kategoris`.`id` in (1, 2)
-
-Tanpa eager loading, setiap baris memicu 1 query tambahan ke `kategoris` (N+1 problem), sehingga 10 buku menghasilkan 12 query. Catatan: modul menyebut "2 query", tetapi `paginate()` menambah 1 query `count`, dan inti pembuktiannya tetap sama (tidak ada query per baris).
-
-## 🖼️ Screenshot
-
-| Daftar Buku | Tambah Buku | Validasi Error |
-|---|---|---|
-| ![Daftar](docs/screenshots/index.png) | ![Tambah](docs/screenshots/create.png) | ![Validasi](docs/screenshots/validasi.png) |
-
-## 🧾 Riwayat Commit
-
-Pesan commit mengikuti Conventional Commits (`feat(migration)`, `feat(model)`, `feat(controller)`, `feat(views)`, `perf(eager-loading)`).
-
-## 📄 Lisensi
-
-Dibangun di atas [Laravel](https://laravel.com) (lisensi MIT). Proyek ini dibuat untuk keperluan tugas perkuliahan.
