@@ -5,6 +5,7 @@ use App\Http\Controllers\BukuController;
 use App\Http\Controllers\KategoriController;
 use App\Http\Controllers\PeminjamanController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Soap\LibrarySoapController;
 
 /* ---------- Publik ---------- */
 Route::redirect('/', '/buku');
@@ -35,4 +36,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('/peminjaman/{id}/kembali', [PeminjamanController::class, 'kembali'])
         ->whereNumber('id')
         ->name('peminjaman.kembali');
+
+    Route::get('/soap/sipus.wsdl', [LibrarySoapController::class, 'wsdl'])->name('soap.sipus.wsdl');
+    Route::post('/soap/sipus', [LibrarySoapController::class, 'handle'])->name('soap.sipus.handle');
 });
