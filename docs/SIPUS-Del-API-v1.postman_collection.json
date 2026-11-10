@@ -10,6 +10,61 @@
     { "key": "base_url", "value": "http://localhost:8000/api/v1", "type": "string" },
     { "key": "token", "value": "", "type": "string" }
   ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const requestName = pm.info.requestName;",
+          "if (requestName.startsWith('6. ')) {",
+          "    pm.collectionVariables.set('test_isbn', '978' + Date.now().toString());",
+          "}",
+          "if (requestName.startsWith('9. ')) {",
+          "    pm.collectionVariables.set('test_nim', '12S' + Date.now().toString());",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const requestNumber = pm.info.requestName.match(/^\\d+/)[0];",
+          "const expectedStatuses = {",
+          "    '1': [200], '2': [200], '3': [500], '4': [200], '5': [200],",
+          "    '6': [201], '7': [200], '8': [200], '9': [201], '10': [200],",
+          "    '11': [200], '12': [200]",
+          "};",
+          "pm.test('HTTP status sesuai skenario', function () {",
+          "    pm.expect(expectedStatuses[requestNumber]).to.include(pm.response.code);",
+          "});",
+          "if (['4', '5', '6', '7', '8', '9', '10', '11', '12'].includes(requestNumber) && [200, 201].includes(pm.response.code)) {",
+          "    pm.test('Respons API sukses memiliki format yang konsisten', function () {",
+          "        const body = pm.response.json();",
+          "        pm.expect(body.success).to.eql(true);",
+          "        pm.expect(body).to.have.property('data');",
+          "    });",
+          "}",
+          "if (requestNumber === '6' && pm.response.code === 201) {",
+          "    const data = pm.response.json().data;",
+          "    pm.collectionVariables.set('book_id', data.id.toString());",
+          "    pm.test('POST buku mengembalikan Location', function () {",
+          "        pm.expect(pm.response.headers.has('Location')).to.be.true;",
+          "    });",
+          "}",
+          "if (requestNumber === '9' && pm.response.code === 201) {",
+          "    const data = pm.response.json().data;",
+          "    pm.collectionVariables.set('loan_id', data.id.toString());",
+          "    pm.test('POST peminjaman mengembalikan Location', function () {",
+          "        pm.expect(pm.response.headers.has('Location')).to.be.true;",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
   "item": [
     {
       "name": "1. SOAP Legacy - Get WSDL Contract",
@@ -100,7 +155,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"kategori_id\": 1,\n  \"isbn\": \"9780132350884\",\n  \"judul\": \"Clean Code: A Handbook of Agile Software Craftsmanship\",\n  \"penulis\": \"Robert C. Martin\",\n  \"penerbit\": \"Prentice Hall\",\n  \"tahun_terbit\": 2008,\n  \"stok\": 1\n}"
+          "raw": "{\n  \"kategori_id\": 1,\n  \"isbn\": \"{{test_isbn}}\",\n  \"judul\": \"Clean Code: A Handbook of Agile Software Craftsmanship\",\n  \"penulis\": \"Robert C. Martin\",\n  \"penerbit\": \"Prentice Hall\",\n  \"tahun_terbit\": 2008,\n  \"stok\": 1\n}"
         },
         "url": "{{base_url}}/bukus"
       }
@@ -121,7 +176,7 @@
           "mode": "raw",
           "raw": "{\n  \"stok\": 2\n}"
         },
-        "url": "{{base_url}}/bukus/1"
+        "url": "{{base_url}}/bukus/{{book_id}}"
       }
     },
     {
@@ -138,9 +193,9 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"kategori_id\": 1,\n  \"isbn\": \"9780132350884\",\n  \"judul\": \"Clean Code (Revised Edition)\",\n  \"penulis\": \"Robert C. Martin\",\n  \"stok\": 1\n}"
+          "raw": "{\n  \"kategori_id\": 1,\n  \"isbn\": \"{{test_isbn}}\",\n  \"judul\": \"Clean Code (Revised Edition)\",\n  \"penulis\": \"Robert C. Martin\",\n  \"stok\": 1\n}"
         },
-        "url": "{{base_url}}/bukus/1"
+        "url": "{{base_url}}/bukus/{{book_id}}"
       }
     },
     {
@@ -157,7 +212,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"buku_id\": 1,\n  \"nim_peminjam\": \"12S24017\",\n  \"nama_peminjam\": \"Arya Pratama Sinambela\",\n  \"durasi_hari\": 7\n}"
+          "raw": "{\n  \"buku_id\": {{book_id}},\n  \"nim_peminjam\": \"{{test_nim}}\",\n  \"nama_peminjam\": \"Arya Pratama Sinambela\",\n  \"durasi_hari\": 7\n}"
         },
         "url": "{{base_url}}/peminjamans"
       }
@@ -173,7 +228,7 @@
         "header": [
           { "key": "Accept", "value": "application/json" }
         ],
-        "url": "{{base_url}}/peminjamans/1/kembalikan"
+        "url": "{{base_url}}/peminjamans/{{loan_id}}/kembalikan"
       }
     },
     {
@@ -183,7 +238,7 @@
         "header": [
           { "key": "Accept", "value": "application/json" }
         ],
-        "url": "{{base_url}}/bukus/1/referensi-eksternal"
+        "url": "{{base_url}}/bukus/{{book_id}}/referensi-eksternal"
       }
     },
     {
